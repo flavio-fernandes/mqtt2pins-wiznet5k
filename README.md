@@ -1,9 +1,18 @@
-# on-off-pins-via-net
+# mqtt2pins-wiznet5k
 
 #### CircuitPython based project for Adafruit wiznet5k to use MQTT to control GPIOs
 
-WIP...
-    
+Using:
+- [Adafruit Ethernet FeatherWing](https://www.adafruit.com/product/3201)
+- [Adafruit Feather RP2040](https://www.adafruit.com/product/4884) -- or any feather capable of running Circuit Python!
+- **Optional** [Adafruit Non-Latching Mini Relay](https://www.adafruit.com/product/2895)
+
+This project aims to provide a simple and generic codebase to connect to an MQTT broker
+via wired Ethernet for controlling the GPIO pins of the microcontroller.
+See the example below on how to make the GPIO pins on/off, as well as get the operational state.
+
+![mqtt2pins-wiznet5k](https://live.staticflickr.com/65535/52530845394_81c7b21497_k.jpg)
+
 ### Removing _all_ files from CIRCUITPY drive
 
 ```
@@ -16,7 +25,7 @@ WIP...
 # First, get to the REPL prompt so the board will not auto-restart as
 # you copy files into it
 
-# Assuming that PyPortal is mounted under /Volumes/CIRCUITPY
+# Assuming that [Feather](https://www.adafruit.com/category/943) is mounted under /Volumes/CIRCUITPY
 $  cd ${THIS_REPO_DIR}
 $  [ -e ./code.py ] && \
    [ -d /Volumes/CIRCUITPY/ ] && \
@@ -37,12 +46,11 @@ $ python3 -m venv .env && source ./.env/bin/activate && \
 $ pip3 install circup
 
 $ for LIB in \
-    adafruit_adt7410 \
-    adafruit_bitmap_font \
-    adafruit_esp32spi \
+    adafruit_led_animation \
     adafruit_logging \
     adafruit_minimqtt \
-    adafruit_pyportal \
+    adafruit_wiznet5k \
+    asyncio \
     neopixel \
     ; do circup install $LIB ; done
 ```
@@ -50,32 +58,38 @@ $ for LIB in \
 This is what it should look like:
 ```text
 $ ls /Volumes/CIRCUITPY/
-LICENSE         boot_out.txt  ...
+LICENSE    boot_out.txt   lib                    queue.py  secrets.py.sample
+README.md  code.py        mqtt2pins_wiznet5k.py
 
 $ ls /Volumes/CIRCUITPY/lib
-...
+adafruit_bus_device	adafruit_logging.mpy	adafruit_pixelbuf.mpy	adafruit_wiznet5k	neopixel.mpy
+adafruit_led_animation	adafruit_minimqtt	adafruit_ticks.mpy	asyncio
+
+$ cat /Volumes/CIRCUITPY/boot_out.txt
+Adafruit CircuitPython 7.3.3 on 2022-08-29; Adafruit Feather RP2040 with rp2040
+Board ID:adafruit_feather_rp2040
 
 $ circup freeze | sort
 Found device at /Volumes/CIRCUITPY, running CircuitPython 7.3.3.
-adafruit_ticks==1.0.8
-adafruit_pixelbuf==1.1.8
-neopixel==6.3.7
-adafruit_logging==5.0.1
 adafruit_bus_device==5.2.3
-adafruit_wiznet5k==1.12.15
-adafruit_minimqtt==6.0.1
-asyncio==0.5.18
 adafruit_led_animation==2.6.1
+adafruit_logging==5.0.1
+adafruit_minimqtt==6.0.1
+adafruit_pixelbuf==1.1.8
+adafruit_ticks==1.0.8
+adafruit_wiznet5k==1.12.15
+asyncio==0.5.18
+neopixel==6.3.7
 ```
 
 ### secrets.py
 
-Make sure to create a file called secrets.py to include info on the wifi as well as the MQTT
-broker you will connect to. Use [**secrets.py.sample**](https://github.com/flavio-fernandes//blob/main/secrets.py.sample)
+Make sure to create a file called secrets.py to include info on the MQTT
+broker you will connect to. Use [**secrets.py.sample**](https://github.com/flavio-fernandes/mqtt2pins-wiznet5k/blob/main/secrets.py.sample)
 as reference.
 
-At this point, all needed files should be in place, and all that
-is needed is to let code.py run. From the Circuit Python serial console:
+At this point, all needed files should be in place and all that is needed is to let
+code.py run. From the Circuit Python serial console:
 
 ```text
 >>  <CTRL-D>
@@ -87,33 +101,48 @@ Example MQTT commands
 
 ```bash
 PREFIX='/onoffpins'
-MQTT=192.168.10.10
+MQTT='broker.hivemq.com'
 
 # Subscribing to status messages
-
 mosquitto_sub -F '@Y-@m-@dT@H:@M:@S@z : %q : %t : %p' -h $MQTT  -t "${PREFIX}/#"
 
-# Request general info
+# On another shell session...
+
+# Request general info. This will include the state of its ports and other interesting info
 mosquitto_pub -h $MQTT -t "${PREFIX}/ping" -r -n
 
-# WIP...
+# Example output
+2022-11-28T21:33:10-0500 : 0 : /onoffpins/status : {
+  "ip": "192.168.10.11", "ports": "10000000", "uptime_mins": 50, "mem_free": 121776}
 
-mosquitto_pub -h $MQTT -t "${PREFIX}/0" -r -m 1
-mosquitto_pub -h $MQTT -t "${PREFIX}/0" -m flip
+# Based on PINS (aka GPIOs) variable listed in the secrets.py file,
+# you can publish on topics that control each port or all ports at once.
 
-mosquitto_pub -h $MQTT -t "${PREFIX}/1" -m 0
+PORT0="${PREFIX}/0"
 
-# Set all ports to 'off'   
+# Note: you can use 'on', 'yes', '1', 'up' to set port on.
+# See: https://github.com/flavio-fernandes/mqtt2pins-wiznet5k/blob/main/mqtt2pins_wiznet5k.py#L88-L96
+mosquitto_pub -h $MQTT -t $PORT0 -m 1      ; # turn port 0 on
+mosquitto_pub -h $MQTT -t $PORT0 -m flip   ; # turn port 0 off
+mosquitto_pub -h $MQTT -t $PORT0 -m flip   ; # turn port 0 on
+mosquitto_pub -h $MQTT -t $PORT0 -r -m off ; # turn port 0 off again and retain value on broker
+
+PORT1="${PREFIX}/1"
+
+mosquitto_pub -h $MQTT -t $PORT1 -m 0  ; # turn port 1 off
+
+# Set 8 ports to 'off'
 mosquitto_pub -h $MQTT -t "${PREFIX}/ports" -m '00000000'
 
-# Set port 0 to 'on', leave port 1 'as is' and port 2 to 'off'   
+# Set port 0 to 'on', leave port 1 'as is' and set port 2 to 'off'
 mosquitto_pub -h $MQTT -t "${PREFIX}/ports" -m '1.0'
 
 # Flip ports 0 and 7 and leave others unchanged
 mosquitto_pub -h $MQTT -t "${PREFIX}/ports" -m '!......!'
 
-# Flip all ports
+# Flip 8 ports
 mosquitto_pub -h $MQTT -t "${PREFIX}/ports" -m '!!!!!!!!'
-    
+
+# Reboot controller
 mosquitto_pub -h $MQTT -t "${PREFIX}/boom" -r -n
 ```

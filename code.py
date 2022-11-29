@@ -5,4 +5,4 @@ cwd = ("/" + __file__).rsplit("/", 1)[
 ]  # the current working directory (where this file is)
 sys.path.append(cwd)
 
-import on_off_pins_via_net
+import mqtt2pins_wiznet5k
