@@ -7,7 +7,6 @@ import digitalio
 import supervisor
 import microcontroller
 import neopixel
-import random
 import time
 from adafruit_wiznet5k.adafruit_wiznet5k import WIZNET5K
 import adafruit_wiznet5k.adafruit_wiznet5k_socket as socket
@@ -24,15 +23,15 @@ except ImportError:
     raise
 
 try:
-    from secrets import PINS
+    from secrets import PINS, DEBUG
 except ImportError:
     print("Required PINS to manage is kept in secrets.py, please add them there!")
     raise
 
 
-class Controls:
+class State:
     def __init__(self):
-        self.debug = False
+        self.debug = DEBUG
         self.pixels = neopixel.NeoPixel(board.NEOPIXEL, 1, auto_write=True)
         self.pins = [digitalio.DigitalInOut(x) for x in PINS]
         for pin in self.pins:
@@ -116,63 +115,64 @@ def boom(message):
 
 
 # Define MQTT callback methods which are called when events occur
-def connected(client, controls, flags, rc):
+def connected(client, state, flags, rc):
     # This function will be called when the client is connected
     # successfully to the broker.
     print(f"Connected to MQTT BROKER")
 
     # Subscribe to all feeds
-    topic = secrets["topic_prefix"] + "/boom"
-    client.subscribe(topic)
-    controls.mqtt_subs[topic] = controls.handle_message_boom
+    if state.debug:
+        topic = secrets["topic_prefix"] + "/boom"
+        client.subscribe(topic)
+        state.mqtt_subs[topic] = state.handle_message_boom
 
     topic = secrets["topic_prefix"] + "/ping"
     client.subscribe(topic)
-    controls.mqtt_subs[topic] = controls.handle_message_ping
+    state.mqtt_subs[topic] = state.handle_message_ping
 
     topic = secrets["topic_prefix"] + "/ports"
     client.subscribe(topic)
-    controls.mqtt_subs[topic] = controls.handle_message_ports
+    state.mqtt_subs[topic] = state.handle_message_ports
 
     for index in range(len(PINS)):
         topic = secrets["topic_prefix"] + f"/{index}"
         client.subscribe(topic)
-        controls.mqtt_subs[topic] = controls.handle_message_port
+        state.mqtt_subs[topic] = state.handle_message_port
 
-    controls.inc_counter("connect")
-    controls.mqtt_connected = True
+    state.inc_counter("connect")
+    state.mqtt_connected = True
 
 
-def disconnected(_client, controls, rc):
+def disconnected(_client, state, rc):
     # This method is called when the client is disconnected
     print(f"Disconnected from MQTT BROKER rc: {rc}")
-    controls.mqtt_connected = False
-    controls.inc_counter("disconnected")
+    state.mqtt_connected = False
+    state.inc_counter("disconnected")
 
 
-def subscribe(_client, controls, topic, granted_qos):
+def subscribe(_client, state, topic, granted_qos):
     # This method is called when the client subscribes to a new feed.
     print(f"Subscribed to {topic} with QOS level {granted_qos}")
-    controls.inc_counter("subscribe")
+    state.inc_counter("subscribe")
 
 
-def publish(_client, controls, topic, pid):
+def publish(_client, state, topic, pid):
     # This method is called when the client publishes data to a feed.
     print(f"Published to {topic} with PID {pid}")
-    controls.inc_counter("publish")
+    state.inc_counter("publish")
 
 
 def message(client, topic, message):
     # This method is called when a topic the client is subscribed to
     # has a new message.
     print("New message on topic {0}: {1}".format(topic, message))
-    controls = client._user_data
-    if topic in controls.mqtt_subs:
-        controls.mqtt_subs[topic](topic, message)
-        controls.inc_counter("message")
+    state = client._user_data
+    if topic in state.mqtt_subs:
+        state.mqtt_subs[topic](topic, message)
+        state.inc_counter("message")
 
 
-async def neo_status(controls):
+async def neo_status(state):
     def cycle(items):
         while True:
             for item in items:
@@ -200,96 +200,96 @@ async def neo_status(controls):
     )
     while True:
         pixel_color = (
-            next(pixels_conn) if controls.mqtt_connected else next(pixels_disc)
+            next(pixels_conn) if state.mqtt_connected else next(pixels_disc)
         )
-        controls.pixels.fill(pixel_color)
+        state.pixels.fill(pixel_color)
         await asyncio.sleep(1)
 
 
-async def bump_uptime(controls):
+async def bump_uptime(state):
     while True:
         await asyncio.sleep(60)
-        controls.uptime_mins += 1
+        state.uptime_mins += 1
 
 
-async def trigger_send_status(controls):
+async def trigger_send_status(state):
     while True:
         # every 10 minutes and 10 seconds
         await asyncio.sleep(60 * 10 + 10)
-        await controls.status_queue.put(True)
+        await state.status_queue.put(True)
 
 
-def send_status_now(controls):
+def send_status_now(state):
     try:
-        controls.status_queue.put_nowait(True)
+        state.status_queue.put_nowait(True)
     except QueueFull:
         pass
 
 
-async def send_status(controls):
+async def send_status(state):
     mqtt_pub_status = secrets["topic_prefix"] + "/status"
     while True:
-        while not controls.mqtt_connected:
+        while not state.mqtt_connected:
             await asyncio.sleep(1)
 
         # Block until status is needed, which can be periodic or responding to ping msg
-        _ = await controls.status_queue.get()
+        _ = await state.status_queue.get()
 
         ports = ""
         for pin_index in range(len(PINS)):
-            ports += "1" if controls.pins[pin_index].value else "0"
+            ports += "1" if state.pins[pin_index].value else "0"
 
         value = {
-            "uptime_mins": controls.uptime_mins,
-            "ip": controls.eth.pretty_ip(controls.eth.ip_address),
+            "uptime_mins": state.uptime_mins,
+            "ip": state.eth.pretty_ip(state.eth.ip_address),
             "ports": ports,
-            "counters": str(controls.counters),
+            "counters": str(state.counters),
             "mem_free": gc.mem_free(),
         }
         try:
-            controls.mqtt_client.publish(mqtt_pub_status, json.dumps(value))
-            controls.inc_counter("status")
-            if controls.debug:
+            state.mqtt_client.publish(mqtt_pub_status, json.dumps(value))
+            state.inc_counter("status")
+            if state.debug:
                 print(f"send_status: {mqtt_pub_status}: {value}")
         except Exception as e:
             print(f"Failed to send status: {e}")
 
 
-async def soft_dogwatch(controls):
+async def soft_dogwatch(state):
     # Note: this is mostly used to handle cases when there is an exception in
-    # net_monitor that could not be handled. When this happens, controls.soft_dog will
+    # net_monitor that could not be handled. When this happens, state.soft_dog will
     # stop increasing and we will know it is time to panic.
     soft_dogwatch_interval = 60
     while True:
-        before_soft_dog = controls.soft_dog
+        before_soft_dog = state.soft_dog
         await asyncio.sleep(soft_dogwatch_interval)
-        if before_soft_dog == controls.soft_dog:
+        if before_soft_dog == state.soft_dog:
             boom(
-                f"controls.soft_dog stuck at {before_soft_dog} after {soft_dogwatch_interval} seconds"
+                f"state.soft_dog stuck at {before_soft_dog} after {soft_dogwatch_interval} seconds"
             )
-        controls.soft_dog = 0
+        state.soft_dog = 0
 
 
-async def net_monitor(controls):
+async def net_monitor(state):
     cs = digitalio.DigitalInOut(board.D10)
     spi_bus = busio.SPI(board.SCK, MOSI=board.MOSI, MISO=board.MISO)
 
     try:
         print("Connecting ethernet")
-        controls.eth = WIZNET5K(spi_bus, cs, mac=secrets["mac"])
+        state.eth = WIZNET5K(spi_bus, cs, mac=secrets["mac"])
     except Exception as e:
         boom(f"Failed setup WIZNET5K: {e}")
 
-    print("Chip Version:", controls.eth.chip)
-    print("MAC Address:", [hex(i) for i in controls.eth.mac_address])
-    print("My IP address is:", controls.eth.pretty_ip(controls.eth.ip_address))
+    print("Chip Version:", state.eth.chip)
+    print("MAC Address:", [hex(i) for i in state.eth.mac_address])
+    print("My IP address is:", state.eth.pretty_ip(state.eth.ip_address))
 
     # Set up a MiniMQTT
-    MQTT.set_socket(socket, controls.eth)
+    MQTT.set_socket(socket, state.eth)
     # https://github.com/adafruit/Adafruit_CircuitPython_MiniMQTT/issues/129
     broker_user = secrets["broker_user"] if secrets["broker_user"] else None
     broker_pass = secrets["broker_pass"] if secrets["broker_pass"] else None
-    controls.mqtt_client = MQTT.MQTT(
+    state.mqtt_client = MQTT.MQTT(
         broker=secrets["broker"],
         port=1883,
         username=broker_user,
@@ -297,32 +297,32 @@ async def net_monitor(controls):
         is_ssl=False,
     )
 
-    if controls.debug:
-        controls.mqtt_client.enable_logger(logging, logging.DEBUG)
+    if state.debug:
+        state.mqtt_client.enable_logger(logging, logging.DEBUG)
 
-    controls.mqtt_client._user_data = controls
-    controls.mqtt_client.on_connect = connected
-    controls.mqtt_client.on_disconnect = disconnected
-    controls.mqtt_client.on_subscribe = subscribe
-    controls.mqtt_client.on_publish = publish
-    controls.mqtt_client.on_message = message
+    state.mqtt_client._user_data = state
+    state.mqtt_client.on_connect = connected
+    state.mqtt_client.on_disconnect = disconnected
+    state.mqtt_client.on_subscribe = subscribe
+    state.mqtt_client.on_publish = publish
+    state.mqtt_client.on_message = message
 
     connect_backoff = 0
     while True:
-        controls.soft_dog += 1
+        state.soft_dog += 1
         await asyncio.sleep(0)
-        controls.eth.maintain_dhcp_lease()
+        state.eth.maintain_dhcp_lease()
 
-        if not controls.mqtt_connected:
+        if not state.mqtt_connected:
             try:
                 print("Connecting to MQTT broker...")
-                controls.mqtt_client.connect()
+                state.mqtt_client.connect()
                 assert (
-                    controls.mqtt_connected
+                    state.mqtt_connected
                 ), "connected callback should have happened"
                 connect_backoff = 0
                 # send status when MQTT gets connected
-                send_status_now(controls)
+                send_status_now(state)
             except Exception as e:
                 print(f"Failed mqtt connect: {e}")
                 await asyncio.sleep(connect_backoff)
@@ -331,30 +331,30 @@ async def net_monitor(controls):
             continue
 
         try:
-            if not controls.mqtt_client.loop(timeout=0.2):
+            if not state.mqtt_client.loop(timeout=0.2):
                 # Take a little break if nothing really happened
                 await asyncio.sleep(0.123)
         except Exception as e:
-            if controls.debug:
+            if state.debug:
                 print(f"Failed MQTT client loop: {e}")
-            await _try_disconnect(controls)
+            await _try_disconnect(state)
         await asyncio.sleep(0)
 
 
-async def _try_disconnect(controls):
+async def _try_disconnect(state):
     print("MQTT is disconnecting")
-    controls.inc_counter("fail_loop")
+    state.inc_counter("fail_loop")
     await asyncio.sleep(3)
-    if not controls.mqtt_connected:
-        if controls.debug:
+    if not state.mqtt_connected:
+        if state.debug:
             print("MQTT disconnect not needed, because broker is not connected")
         return
 
     # Force state to be disconnected
-    controls.mqtt_connected = False
+    state.mqtt_connected = False
     disc_ok = False
     try:
-        controls.mqtt_client.disconnect()
+        state.mqtt_client.disconnect()
         disc_ok = True
         print("MQTT disconnect completed")
     except Exception as e:
@@ -362,22 +362,22 @@ async def _try_disconnect(controls):
 
     try:
         if not disc_ok:
-            controls.inc_counter("eth_reset")
-            assert controls.eth.sw_reset() == 0, f"Reset WIZNET5K did not go well"
+            state.inc_counter("eth_reset")
+            assert state.eth.sw_reset() == 0, f"Reset WIZNET5K did not go well"
             print("Reset WIZNET5K completed")
     except Exception as e:
         boom(f"FATAL! Failed eth reset: {e}")
 
 
 async def main():
-    controls = Controls()
+    state = State()
 
-    neo_status_task = asyncio.create_task(neo_status(controls))
-    bump_uptime_task = asyncio.create_task(bump_uptime(controls))
-    trigger_send_status_task = asyncio.create_task(trigger_send_status(controls))
-    send_status_task = asyncio.create_task(send_status(controls))
-    soft_dogwatch_task = asyncio.create_task(soft_dogwatch(controls))
-    net_monitor_task = asyncio.create_task(net_monitor(controls))
+    neo_status_task = asyncio.create_task(neo_status(state))
+    bump_uptime_task = asyncio.create_task(bump_uptime(state))
+    trigger_send_status_task = asyncio.create_task(trigger_send_status(state))
+    send_status_task = asyncio.create_task(send_status(state))
+    soft_dogwatch_task = asyncio.create_task(soft_dogwatch(state))
+    net_monitor_task = asyncio.create_task(net_monitor(state))
     await asyncio.gather(
         neo_status_task,
         bump_uptime_task,
