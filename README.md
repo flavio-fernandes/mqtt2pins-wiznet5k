@@ -13,6 +13,13 @@ See the example below on how to make the GPIO pins on/off, as well as get the op
 
 ![mqtt2pins-wiznet5k](https://live.staticflickr.com/65535/52530845394_81c7b21497_k.jpg)
 
+**Note:** This code is used in a setup where I needed to control 4 [relays](https://www.mouser.com/ProductDetail/Panasonic-Industrial-Devices/HY1-4.5V?qs=YINDDaGsG3FSnYZykcV2vQ%3D%3D) wired to an alarm system.
+You can see more [pictures of that project here :art:](https://flic.kr/s/aHBqjAhSD3).
+
+Also, the enclosure printed for that project is available at [OnShape via this link](https://cad.onshape.com/documents/dfc64f3f819c48ce95943d31/w/ad13758cd223c2b401c080f3/e/51e3f25110950b06329750fe).
+
+# Usage
+
 ### Removing _all_ files from CIRCUITPY drive
 
 ```
