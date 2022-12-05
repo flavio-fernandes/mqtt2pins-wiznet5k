@@ -128,7 +128,7 @@ mosquitto_pub -h $MQTT -t "${PREFIX}/ping" -r -n
 PORT0="${PREFIX}/0"
 
 # Note: you can use 'on', 'yes', '1', 'up' to set port on.
-# See: https://github.com/flavio-fernandes/mqtt2pins-wiznet5k/blob/main/mqtt2pins_wiznet5k.py#L88-L96
+# See: https://github.com/flavio-fernandes/mqtt2pins-wiznet5k/blob/main/mqtt2pins_wiznet5k.py#L83-L91
 mosquitto_pub -h $MQTT -t $PORT0 -m 1      ; # turn port 0 on
 mosquitto_pub -h $MQTT -t $PORT0 -m flip   ; # turn port 0 off
 mosquitto_pub -h $MQTT -t $PORT0 -m flip   ; # turn port 0 on
@@ -149,7 +149,4 @@ mosquitto_pub -h $MQTT -t "${PREFIX}/ports" -m '!......!'
 
 # Flip 8 ports
 mosquitto_pub -h $MQTT -t "${PREFIX}/ports" -m '!!!!!!!!'
-
-# Reboot controller
-mosquitto_pub -h $MQTT -t "${PREFIX}/boom" -r -n
 ```

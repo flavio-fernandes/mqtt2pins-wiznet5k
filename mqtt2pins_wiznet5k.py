@@ -49,10 +49,6 @@ class State:
         curr_value = self.counters.get(name, 0)
         self.counters[name] = curr_value + 1
 
-    def handle_message_boom(self, _topic, message):
-        print("Handling boom")
-        boom(message)
-
     def handle_message_ping(self, _topic, _message):
         print("Handling ping")
         send_status_now(self)
@@ -121,11 +117,6 @@ def connected(client, state, flags, rc):
     print(f"Connected to MQTT BROKER")
 
     # Subscribe to all feeds
-    if state.debug:
-        topic = secrets["topic_prefix"] + "/boom"
-        client.subscribe(topic)
-        state.mqtt_subs[topic] = state.handle_message_boom
-
     topic = secrets["topic_prefix"] + "/ping"
     client.subscribe(topic)
     state.mqtt_subs[topic] = state.handle_message_ping
@@ -338,7 +329,6 @@ async def net_monitor(state):
             if state.debug:
                 print(f"Failed MQTT client loop: {e}")
             await _try_disconnect(state)
-        await asyncio.sleep(0)
 
 
 async def _try_disconnect(state):
