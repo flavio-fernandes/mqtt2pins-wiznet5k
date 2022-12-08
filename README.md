@@ -18,6 +18,14 @@ You can see more [pictures of that project here :art:](https://flic.kr/s/aHBqjAh
 
 Also, the enclosure printed for that project is available at [OnShape via this link](https://cad.onshape.com/documents/dfc64f3f819c48ce95943d31/w/ad13758cd223c2b401c080f3/e/51e3f25110950b06329750fe).
 
+#### Adafruit Show and Tell
+
+Adafruit offers guides along with products that make it easy to build this project.
+Liz hosted [Show and Tell](https://www.youtube.com/c/adafruit/videos) on Dec 7th, 2022 and
+I had the honor of [talking about what I did](https://youtu.be/dXhzo44lXQ0?t=598) to them.
+
+[![mqtt2pins-wiznet5k talk](https://img.youtube.com/vi/dXhzo44lXQ0/2.jpg)](https://youtu.be/dXhzo44lXQ0?t=598)
+
 # Usage
 
 ### Removing _all_ files from CIRCUITPY drive
